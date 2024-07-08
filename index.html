@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat con Celeste</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <img id="logo" src="img/logo.jpg" alt="Logo de la Universidad">
+    <div id="chatbox">
+        <div id="chatlog"></div>
+        <input type="text" id="userInput" placeholder="Escribe tu mensaje aquí...">
+        <div id="controls">
+            <button id="sendBtn">Enviar</button>
+            <button id="voiceBtn">Hablar</button>
+        </div>
+    </div>
+
+    <script>
+        const chatlog = document.getElementById('chatlog');
+        const userInput = document.getElementById('userInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const voiceBtn = document.getElementById('voiceBtn');
+
+        async function sendMessage(message) {
+            console.log('Sending message:', message);
+            try {
+                const response = await fetch('http://localhost:3000/sendMessage', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                console.log('Response data:', data);
+
+                // Extraer la respuesta del objeto `output`
+                if (data.output && data.output.answer) {
+                    return data.output.answer;
+                } else {
+                    throw new Error('Invalid response format');
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+                return null;
+            }
+        }
+
+        function speakMessage(message) {
+            const maxLength = 200; // Tamaño máximo de cada fragmento
+            const utterances = [];
+
+            // Dividir el mensaje en fragmentos
+            for (let i = 0; i < message.length; i += maxLength) {
+                let utterance = new SpeechSynthesisUtterance(message.slice(i, i + maxLength));
+                utterance.lang = 'es-ES';
+                utterances.push(utterance);
+            }
+
+            // Reproducir cada fragmento secuencialmente
+            function speakNext(index) {
+                if (index < utterances.length) {
+                    utterances[index].onend = () => speakNext(index + 1);
+                    window.speechSynthesis.speak(utterances[index]);
+                }
+            }
+
+            speakNext(0);
+        }
+
+        sendBtn.addEventListener('click', async () => {
+            const message = userInput.value;
+            if (message.trim() === '') return;
+
+            const userMessageElement = document.createElement('div');
+            userMessageElement.className = 'message user-message';
+            userMessageElement.textContent = message;
+            chatlog.appendChild(userMessageElement);
+            userInput.value = '';
+
+            const reply = await sendMessage(message);
+            if (reply) {
+                const assistantMessageElement = document.createElement('div');
+                assistantMessageElement.className = 'message assistant-message';
+                assistantMessageElement.innerHTML = `<img src="img/celeste.jpg" alt="Celeste"> <span>${reply}</span>`;
+                chatlog.appendChild(assistantMessageElement);
+
+                speakMessage(reply);
+
+                chatlog.scrollTop = chatlog.scrollHeight;
+            } else {
+                const errorMessageElement = document.createElement('div');
+                errorMessageElement.className = 'message assistant-message';
+                errorMessageElement.innerHTML = `<img src="img/celeste.jpg" alt="Celeste"> <span>Hubo un error procesando tu solicitud. Intenta nuevamente.</span>`;
+                chatlog.appendChild(errorMessageElement);
+            }
+        });
+
+        // Permitir el envío de mensajes con la tecla Enter
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendBtn.click();
+            }
+        });
+
+        // Configurar reconocimiento de voz
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'es-ES';
+
+        recognition.onresult = async (event) => {
+            const transcript = event.results[0][0].transcript;
+            userInput.value = transcript;
+            sendBtn.click();
+        };
+
+        voiceBtn.addEventListener('click', () => {
+            recognition.start();
+        });
+    </script>
+</body>
+</html>
